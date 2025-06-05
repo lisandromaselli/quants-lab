@@ -608,3 +608,29 @@ class TimescaleClient:
             grid_params["limit"],
             grid_params["side"]
         )
+
+    async def create_reference_prices_table(self, table_name: str = "reference_prices"):
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                f"""
+                CREATE TABLE IF NOT EXISTS {table_name} (
+                    timestamp TIMESTAMPTZ NOT NULL,
+                    broker TEXT NOT NULL,
+                    symbol TEXT NOT NULL,
+                    price NUMERIC NOT NULL,
+                    PRIMARY KEY (timestamp, broker, symbol)
+                )
+                """
+            )
+
+    async def append_reference_prices(self, table_name: str, records: List[Tuple[float, str, str, float]]):
+        async with self.pool.acquire() as conn:
+            await self.create_reference_prices_table(table_name)
+            await conn.executemany(
+                f"""
+                INSERT INTO {table_name} (timestamp, broker, symbol, price)
+                VALUES (to_timestamp($1), $2, $3, $4)
+                ON CONFLICT (timestamp, broker, symbol) DO NOTHING
+                """,
+                records,
+            )
